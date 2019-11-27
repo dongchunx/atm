@@ -61,8 +61,8 @@ def get_others(query, dictionary):
 
         if key_word1 in query or key_word2 in query:
             data['insured'].append(item)
-
-    print(data)
+    if data:
+        print(data)
     return data
 
 
@@ -80,12 +80,11 @@ def get_status(query):
 
     if '银保客户' in query or '银保' in query:
         data['silver'] = '是'
-
-    print(data)
+    if data:
+        print(data)
     return data
 
-
-##筛选类---保单状态类
+# 筛选类---保单状态类
 # life_status = ['有效', '失效', '满期', '退保', '给付期', '融通退保', '理赔中', '变更中', '责任终止', '豁免', '终止']
 # life_freq = ['趸交', '3年缴', '5年缴', '20年缴', '30年缴']
 # life_method = ['趸交', '年缴']
@@ -108,7 +107,8 @@ def get_policy_status(query, dictionary):
     for item in dictionary['life_method']:
         if item in query:
             data['pay_method'].append(item)
-    print(data)
+    if data:
+        print(data)
     return data
 
 
@@ -128,8 +128,8 @@ def life_cross_class(query):
             data['is_health'] = '否'
         elif '健康险' in query:
             data['is_health'] = '是'
-
-    print(data)
+    if data:
+        print(data)
     return data
 
 
@@ -146,8 +146,8 @@ def insurance_srceen(query):
         data['year_money'] = '年缴保费'
 
     data['rule'] = None
-
-    print(data)
+    if data:
+        print(data)
     return data
 
 

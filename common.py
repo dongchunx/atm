@@ -82,7 +82,7 @@ def get_insurance_type(words_list, dictionary):
     """
 
     insurance_list = []
-    insurance_type = 1
+    insurance_type = "CX001"
     print(words_list)
     # only support insurance name is exact
     for item in dictionary['life_insurance']:
@@ -91,18 +91,18 @@ def get_insurance_type(words_list, dictionary):
 
     for item in dictionary['car_insurance']:
         if item in words_list:
-            insurance_type = 1
+            insurance_type = "CX001"
             insurance_list.append(item)
 
     for item in dictionary['non_car_insurance']:
         if item in words_list:
-            insurance_type = 2
+            insurance_type = "FC001"
             insurance_list.append(item)
 
     if "非车" not in words_list and "车险" in words_list or "车辆" in words_list:
-        insurance_type = 1
+        insurance_type = "CX001"
     if "非车" in words_list:
-        insurance_type = 2
+        insurance_type = "FC001"
 
     return insurance_type, insurance_list
 
@@ -201,7 +201,8 @@ def get_common_dict(words_list, tag_id, dictionary):
     if list_dev:
         str_dev = ','.join(list_dev)
         data[tag_id] = str_dev
-    print(data)
+    if data:
+        print(data)
     return data
 
 
@@ -216,16 +217,19 @@ def get_common_list(word_list, tag_id, dictionary):
     if list_common_list:
         str_common_list = ','.join(list_common_list)
         data[tag_id] = str_common_list
-    print(data)
+    if data:
+        print(data)
     return data
 
 
-# 用于单个关键字的是否判断
-def get_true_or_false(word_list, key_word, tag_id):
+# 用于单个关键字的是否判断（只能传单个关键字）
+# 需改造成列表传参形式，方便加别名
+def get_true_or_false(word_list, key_word_list, tag_id):
     data = {}
-    if key_word in word_list:
-        data[tag_id] = '1'
-        data = judge_utils(word_list, key_word, data, tag_id)
+    for key_word in key_word_list:
+        if key_word in word_list:
+            data[tag_id] = '1'
+            data = judge_utils(word_list, key_word, data, tag_id)
     return data
 
 
@@ -234,13 +238,78 @@ def judge_utils(word_list, key_word, data, tag_id):
     index = word_list.index(key_word)
     # 否定词集合
     negative_word = ["不", "非", "没", "无", "否"]
-    for i in range(index - 2, index + 3):
-        if word_list[i]:
-            for j in negative_word:
-                if j in word_list[i]:
-                    data[tag_id] = '0'
-                    break
+    min_index = index - 2
+    max_index = index + 3
+    if min_index < 0:
+        min_index = 0
+    if max_index > 0:
+        max_index = len(word_list)
+    for i in range(min_index, max_index):
+        if 0 <= i < len(word_list):
+            if word_list[i]:
+                for j in negative_word:
+                    if j in word_list[i]:
+                        data[tag_id] = '0'
+                        break
     return data
+
+
+def get_numbers_common(word_list, query, key_word_list):
+    """
+    :param word_list:
+    :param query:
+    :param key_word_list:
+    :return:
+    """
+    num_list = []
+    final_list = []
+    for key_word in key_word_list:
+        if key_word in word_list:
+            list_word = re.findall(r'{}.*'.format(key_word), query)
+            if list_word:
+                word_list_dev = jieba.lcut(list_word[0])
+                for i in word_list_dev:
+                    if len(get_number(i)) > 0:
+                        if i == get_number(i)[0]:
+                            num_list.append(i)
+                for index, i in enumerate(word_list_dev):
+                    num_min = ''
+                    num_max = ''
+                    if i == '-' or i == '到':
+                        if index - 2 >= 0:
+                            word = word_list_dev[index - 1]
+                            if word in num_list:
+                                num_min = word
+                            elif word == '天':
+                                if word_list_dev[index - 2] in num_list:
+                                    num_min = word_list_dev[index - 2]
+                            elif word == '万':
+                                if word_list_dev[index - 2] in num_list:
+                                    num_min = str(float(word_list_dev[index - 2]) * 10000)
+                        if index + 2 < len(word_list_dev):
+                            word = word_list_dev[index + 1]
+                            if word in num_list:
+                                if word_list_dev[index + 2] == '万':
+                                    num_max = str(float(word) * 10000)
+                                else:
+                                    num_max = word
+                        if num_min and num_max:
+                            final_list.append(str(num_min) + '-' + str(num_max))
+                for index, i in enumerate(word_list_dev):
+                    num_min = ''
+                    num_max = ''
+                    if i == '以上' and index - 2 >= 0:
+                        if word_list_dev[index - 2] == '万':
+                            if word_list_dev[index - 1] in num_list:
+                                num_min = str(float(word_list_dev[index - 1]) * 10000)
+                                num_max = '#'
+                        else:
+                            if word_list_dev[index - 1] in num_list:
+                                num_min = word_list_dev[index - 1]
+                                num_max = '#'
+                        if num_min and num_max:
+                            final_list.append(str(num_min) + '-' + str(num_max))
+    return final_list
 
 
 # 获取数值类字段详细信息
@@ -251,6 +320,7 @@ def get_number_class_detail(word_list, query, key_word_list, tag_id_1, tag_id_2,
     :param query:
     :param tag_id_1: 较小值
     :param tag_id_2: 较大值
+    :param tag_id: tag_id值
     :return:
     """
     num_list = []
@@ -265,7 +335,7 @@ def get_number_class_detail(word_list, query, key_word_list, tag_id_1, tag_id_2,
             data[tag_id_1] = '*'
             data[tag_id_2] = '#'
             index_word = word_list.index(key_word)
-            num_min = index_word - 2
+            num_min = index_word - 3
             num_max = index_word + 7
             if num_min < 0:
                 num_min = 0
@@ -276,44 +346,78 @@ def get_number_class_detail(word_list, query, key_word_list, tag_id_1, tag_id_2,
             # 多种规则匹配
             if '-' in list_range:
                 index1 = list_range.index('-')
-                if list_range[index1 - 1] in num_list:
-                    data[tag_id_1] = list_range[index1 - 1]
-                if list_range[index1 + 1] in num_list:
-                    data[tag_id_2] = list_range[index1 + 1]
+                for j in range(1, 3):
+                    if index1 - j >= 0:
+                        if list_range[index1 - j] in num_list:
+                            data[tag_id_1] = list_range[index1 - j]
+                    if index1 + j < len(list_range):
+                        if list_range[index1 + j] in num_list:
+                            data[tag_id_2] = list_range[index1 + j]
             elif '到' in list_range:
                 index1 = list_range.index('到')
-                for i in range(0, 2):
-                    if list_range[index1 - i] in num_list:
-                        data[tag_id_1] = list_range[index1 - i]
-                    if list_range[index1 + i] in num_list:
-                        data[tag_id_2] = list_range[index1 + i]
+                for i in range(0, 3):
+                    if index1 - i >= 0:
+                        if list_range[index1 - i] in num_list:
+                            data[tag_id_1] = list_range[index1 - i]
+                    if index1 + i < len(list_range):
+                        if list_range[index1 + i] in num_list:
+                            data[tag_id_2] = list_range[index1 + i]
 
             # 其后会跟最小值的词汇
             list_min_value = ['超过', '大于', '多于']
             for j in list_min_value:
                 if j in list_range:
                     index2 = list_range.index(j)
-                    if list_range[index2 + 1] in num_list:
-                        data[tag_id_1] = list_range[index2 + 1]
+                    if index2 + 1 <= len(list_range):
+                        if list_range[index2 + 1] in num_list:
+                            data[tag_id_1] = list_range[index2 + 1]
 
             # 后面会跟最大值的词汇
             list_max_value = ['低于', '小于']
             for j in list_max_value:
                 if j in list_range:
                     index3 = list_range.index(j)
-                    if list_range[index3 + 1] in num_list:
-                        data[tag_id_2] = list_range[index3 + 1]
+                    if index3 + 1 <= len(list_range):
+                        if list_range[index3 + 1] in num_list:
+                            data[tag_id_2] = list_range[index3 + 1]
+            # 出现在最小值前面的词汇
+            list1 = ["以上"]
+            for j in list1:
+                if j in list_range:
+                    index5 = list_range.index(j)
+                    for z in range(1, 3):
+                        if index5 - z >= 0:
+                            if list_range[index5 - z] in num_list:
+                                data[tag_id_1] = list_range[index5 - z]
+            list2 = ["以下"]
+            for j in list2:
+                if j in list_range:
+                    index6 = list_range.index(j)
+                    for z in range(1, 3):
+                        if index6 - z >= 0:
+                            if list_range[index6 - z] in num_list:
+                                data[tag_id_2] = list_range[index6 - z]
+            is_wan = False
             if data != {}:
                 for x, y in data.items():
                     if y != '*' and y != '#':
                         index4 = word_list.index(y)
                         if word_list[index4 + 1] == '万':
-                            data[x] = float(y) * 10000
+                            is_wan = True
+                            # data[x] = float(y) * 10000
             value_min = data[tag_id_1]
             value_max = data[tag_id_2]
+            if is_wan:
+                if value_min != '*':
+                    value_min = float(data[tag_id_1]) * 10000
+                if value_max != '#':
+                    value_max = float(data[tag_id_2]) * 10000
             data[tag_id] = str(value_min) + ',' + str(value_max)
             data.pop(tag_id_1, 0)
             data.pop(tag_id_2, 0)
+    # special handle for 吨位 and 车重
+    if "吨" in key_word_list and "车重" in query:
+        data.clear()
     return data
 
 
@@ -344,9 +448,8 @@ def get_field_attribute(word_list, query, key_word_list):
     """
     field_attribute = 0
     for key_word in key_word_list:
-
         if key_word in word_list:
-            print("有维度或筛选字段")
+            # print("有维度或筛选字段")
             index = word_list.index(key_word)
             # 需考虑多种表示分组词汇
             list1 = re.findall(r'按[\u2E80-\u9FFF]+分组', query)
@@ -354,31 +457,37 @@ def get_field_attribute(word_list, query, key_word_list):
                 for i in list1:
                     if key_word in i:
                         field_attribute = 1
-            list1 = re.findall(r'按[\u2E80-\u9FFF]+分步', query)
+            list1 = re.findall(r'按[\u2E80-\u9FFF|\d]+分步', query)
             if list1:
                 for i in list1:
                     if key_word in i:
                         field_attribute = 1
-            list1 = re.findall(r'按[\u2E80-\u9FFF]+统计', query)
+            list1 = re.findall(r'按[\u2E80-\u9FFF|\d]+看', query)
+            if list1:
+                for i in list1:
+                    if key_word in i:
+                        field_attribute = 1
+            list1 = re.findall(r'按[\u2E80-\u9FFF|\d]+统计', query)
             if list1:
                 for i in list1:
                     if key_word in i:
                         field_attribute = 1
             # 表维度的关键字
-            dimensionality_list = ["哪", "什么", "多少", "各", "每"]
+            dimensionality_list = ["所有", "哪", "什么", "多少", "各", "每", "分"]
             for i in dimensionality_list:
-                index1 = index - 3
+                index1 = index - 4
                 if index1 <= 0:
                     index1 = 0
                 for j in range(index1, index):
                     if i in word_list[j]:
                         field_attribute = 1
-            dimensionality_list2 = ["占比, 比例"]
+            # 表维度的关键字
+            dimensionality_list2 = ["占比", "比例", "分布", "分别", "多少", "各自"]
             for i in dimensionality_list2:
-                index2 = index + 3
+                index2 = index + 4
                 if index2 >= len(word_list):
-                    index2 = len(word_list)
-                for j in range(index + 1, index2):
+                    index2 = len(word_list) - 1
+                for j in range(index, index2 + 1):
                     if i in word_list[j]:
                         field_attribute = 1
     return field_attribute
@@ -408,75 +517,101 @@ def get_filter_field(body, old_field_name, tag_id, data):
 def change_field_format(body, old_field_name, tag_id, data):
     if old_field_name in body.keys():
         if body[old_field_name] != "":
-            data[tag_id] = -1
+            data[tag_id] = "-1"
+            # print("test")
+            # print(data)
 
 
 # 获取维度字段中需要返回的数值
-def get_number_in_group(word_list, query, key_word_list, tag_id):
-    num_list = []
-    data = {}
-    number_mark = 0
-    for i in word_list:
-        if len(get_number(i)) > 0:
-            if i == get_number(i)[0]:
-                num_list.append(i)
-    for key_word in key_word_list:
-
-        value_list = []
-        if key_word in word_list:
-            print("有维度数值关键字")
-            index = word_list.index(key_word)
-            if index + 1 <= len(word_list):
-                if word_list[index + 1] == '在':
-                    for j in range(index, len(word_list)):
-                        if word_list[j] == '-' or word_list[j] == '到':
-                            if word_list[j - 1] in num_list and word_list[j + 1] in num_list:
-                                if word_list[j + 2] == '万':
-                                    value_list.append([int(word_list[j - 1]) * 10000, int(word_list[j + 1]) * 10000])
-                                else:
-                                    value_list.append([word_list[j - 1], word_list[j + 1]])
-            data[tag_id] = value_list
-            list_final = []
-            if not value_list:
-                num_list = 1
-                for i in data[tag_id]:
-                    list_final.append(str(i[0]) + '-' + str(i[1]))
-                data[tag_id] = ','.join(list_final)
-            print(data)
-    return data, number_mark
+# def get_number_in_group(word_list, query, key_word_list, tag_id):
+#     num_list = []
+#     result_list = []
+#     number_mark = 0
+#     for i in word_list:
+#         if len(get_number(i)) > 0:
+#             if i == get_number(i)[0]:
+#                 num_list.append(i)
+#     for key_word in key_word_list:
+#
+#         value_list = []
+#         if key_word in word_list:
+#             index = word_list.index(key_word)
+#             for j in range(index, len(word_list)):
+#                 if word_list[j] == '-' or word_list[j] == '到':
+#                     if word_list[j - 1] in num_list and word_list[j + 1] in num_list:
+#                         if word_list[j + 2] == '万':
+#                             value_list.append([int(word_list[j - 1]) * 10000, int(word_list[j + 1]) * 10000])
+#                         else:
+#                             value_list.append([word_list[j - 1], word_list[j + 1]])
+#             result_list = value_list
+#             list_final = []
+#             if result_list:
+#                 number_mark = 1
+#                 for i in result_list:
+#                     list_final.append(str(i[0]) + '-' + str(i[1]))
+#                     result_list = ','.join(list_final)
+#                 print(result_list)
+#     return result_list, number_mark
 
 
-# 特殊业务语料特定规则处理
-def get_business_words():
-    data = {}
-
-    return data
-
-
-# 未定义字段
-def get_undefined_field(query):
-    data = {}
-    message_list = []
-    field_list = ["品牌", "车系", "车型", "经办人", "代理点", "精友车型编码", "精油车型分类", "渠道合作代码", "合作企业", "合作代码"]
-    for i in field_list:
-        if i in query:
-            message_list.append(i)
-    if len(message_list) != 0:
-        message = ("未拓展" + ','.join(message_list) + "识别功能,需手动添加")
-    else:
-        message = ""
-    data["message"] = message
-    return data
+# # 未加识别功能的字段
+# def get_undefined_field(query):
+#     data = {}
+#     message_list = []
+#     list1 = ["品牌"]
+#     for i in list1:
+#         if i in query:
+#             message_list.append("品牌")
+#     list2 = ["车系"]
+#     for i in list2:
+#         if i in query:
+#             message_list.append("车系")
+#     list3 = ["车型"]
+#     for i in list3:
+#         if i in query:
+#             if "精友车型" not in query:
+#                 message_list.append("车型")
+#     list4 = ["经办人"]
+#     for i in list4:
+#         if i in query:
+#             message_list.append("经办人")
+#     list5 = ["代理点"]
+#     for i in list5:
+#         if i in query:
+#             message_list.append("代理点")
+#     list6 = ["精友车型编码", "精友车型"]
+#     for i in list6:
+#         if i in query:
+#             message_list.append("精友车型编码")
+#     list7 = ["渠道合作代码"]
+#     for i in list7:
+#         if i in query:
+#             message_list.append("渠道合作代码")
+#     list8 = ["合作企业"]
+#     for i in list8:
+#         if i in query:
+#             message_list.append("合作企业")
+#     list9 = ["合作伙伴代码"]
+#     for i in list9:
+#         if i in query:
+#             message_list.append("合作伙伴代码")
+#     if len(message_list) != 0:
+#         message = ("未拓展" + ','.join(message_list) + "识别功能,需手动添加")
+#     else:
+#         message = ""
+#     data["message"] = message
+#     return data
 
 
 # 将字段名转换为tag_id
 def change_field_tag_id(data_dev):
     dict_field = {'car_start_time': 200001, 'car_end_time': 200081, 'car_record_time': 200501, 'car_sign_time': 200179,
                   'car_effect_time': 200180, 'car_entry_time': 200182, 'car_personal_or_group': 200022,
-                  'car_under_warranty_customer': 200677, 'car_organization': 200003, 'car_channels': 200006,
+                  'car_under_warranty_customer': 200677, 'car_organization': 200003, 'car_channels': 200004,
                   'new_channel': 200613, 'car_partner_code': 200082, 'channel_partner_code': 200083,
                   'channel_partner_firm_name': 200593, 'blanket_insurance': 200084, 'car_agent_point': 200085,
-                  'car_agent_person': 200086, 'business_origin': 200186, 'filter_motor_tractor': 200007,
+                  'car_agent_person': 200086, 'business_origin': 200186, 'one_way_car_insurance': 200006,
+                  'filter_motor_tractor': 200007,
                   'car_insurance_type': 200099, 'self_car': 200008, 'new_car': 200009, 'sub_new_car': 200010,
                   'local_car': 200188, 'car_age': 200189, 'purchase_price': 200013, 'using_properties': 200093,
                   'car_kind': 200191, 'risk_level': 200094, 'tai_risk_level': 200014, 'car_type_name': 200015,
@@ -531,7 +666,7 @@ def change_field_tag_id(data_dev):
                   'notCar_insured_province': 5000019, 'notCar_new_customer': 5000021, 'current_year_customer': 5000176,
                   'notCar_insurance': 5000072, 'notCar_insurance_period': 5000026, 'notCar_policy_status': 5000027,
                   'accept_insurance': 5000193, 'insurance_premiums': 5000168, 'insurance_account': 5000189,
-                  'advance_sign_day': 5000203, 'notCar_personal_group': 5000197, 'notCar_agent_point': 5000204,
+                  'advance_sign_day': 5000203, 'notCar_personal_group': 5000196, 'notCar_agent_point': 5000204,
                   'notCar_partner_code': 5000199, 'interval': 5000030, 'notCar_organization_2': 5000032,
                   'notCar_organization_3': 5000033, 'notCar_organization_4': 5000034, 'acquisition_way_group': 5000035,
                   'channel_group': 5000036, 'issue_tool_group': 5000037, 'gender_group': 5000040,
@@ -570,14 +705,221 @@ def change_field_tag_id(data_dev):
 # 时间间隔
 def get_interval(query, dictionary):
     key_dict222 = {
-        '年': 'BN_CHINA', '季': 'BNDJJ_CHINA', '月': 'BNDJY_CHINA',
-        '周': 'BZDYT_BZZHYT', '日': 'ZL_DATE'
+        '年': 'BN_CHINA', '季度': 'BNDJJ_CHINA', '月': 'BNDJY_CHINA',
+        '周': 'BZDYT_BZZHYT', '天': 'ZL_DATE'
     }
     for key in dictionary['interval_dict'].keys():
         for item in dictionary['interval_dict'][key]:
             if item in query:
                 value = key_dict222[key]
                 return value
+
+
+# 获取字段属性
+def get_field_kind(tag_id):
+    kind_dict = {
+        "condition": [5000001, 5000002, 5000003, 5000004, 5000006, 5000069, 5000009, 5000012, 5000013, 5000014, 5000070,
+                      5000015, 5000016, 5000017, 5000018, 5000071, 5000019, 5000021, 5000176, 5000072, 5000026, 5000027,
+                      5000193, 5000168, 5000189, 5000203, 5000196, 5000204, 5000199, 200001, 200081, 200501, 200179,
+                      200180, 200182, 200022, 200677, 200003, 200004, 200613, 200082, 200083, 200593, 200084, 200085,
+                      200086, 200186, 200006, 200007, 200187, 200008, 200009, 200010, 200188, 200189, 200013, 200093,
+                      200191, 200094, 200014, 200015, 200097, 200192, 200193, 200194, 200017, 200195, 200198, 200199,
+                      200200, 200204, 200594, 200209, 200502, 200503, 200225, 200224, 200227, 200228, 200229, 200231,
+                      200232, 200233, 200213, 200214, 200098, 200099, 200586, 200100, 200102, 200704, 200603, 200025,
+                      200026, 200027, 200103, 200263, 200104, 200105, 200106, 200107, 200108, 200109, 200110, 200111,
+                      200112, 200113, 200114, 200115, 200116, 200264, 200266, 200029, 200030, 200031, 200117, 200118,
+                      200119, 200120, 200277, 200278, 200279, 200033, 200034, 'car_start_time', 'car_end_time',
+                      'car_record_time', 'car_sign_time', 'car_effect_time', 'car_entry_time', 'car_personal_or_group',
+                      'car_under_warranty_customer', 'car_organization', 'car_channels', 'new_channel',
+                      'car_partner_code', 'channel_partner_code', 'channel_partner_firm_name', 'blanket_insurance',
+                      'car_agent_point', 'car_agent_person', 'business_origin', 'one_way_car_insurance',
+                      'filter_motor_tractor', 'car_insurance_type', 'self_car', 'new_car', 'sub_new_car', 'local_car',
+                      'car_age', 'purchase_price', 'using_properties', 'car_kind', 'risk_level', 'tai_risk_level',
+                      'car_type_name', 'car_barnd', 'car_series', 'car_type', 'car_type_code', 'ton',
+                      'passenger_capacity', 'years_loan', 'dump_trailer', 'special_vehicle', 'displacement',
+                      'car_weight', 'first_insure', 'car_gender', 'issue_age', 'policyholder_birth_day', 'id_type',
+                      'marital_status', 'annual_income', 'policyholder_industry', 'policyholder_edu',
+                      'policyholder_profession', 'policyholder_nation', 'car_insured_gender', 'issued_age',
+                      'car_policy_type', 'car_insurance_type', 'car_new_renew', 'insurance_time_limit',
+                      'channel_underwriting_coefficient', 'insurance_point', 'business_channel', 'total_premium',
+                      'commercial_insurance_premium', 'vehicle_insurance_premium', 'car_damage_insurance_premium',
+                      'car_damage_insurance_premium_1', 'car_damage_insu_no_deductible',
+                      'three_liability_insurance_premium', 'three_liability_insu_no_deductible',
+                      'glass_break_insu_premium', 'car_duty_insu_premium', 'car_duty_insu_no_deductible_premium',
+                      'robbery_insu_premium', 'robbery_insu_no_deductible_premium', 'scratch_insu_premium',
+                      'scratch_insu_no_deductible_premium', 'wading_insu_premium', 'self_ignite_premium',
+                      'self_ignite_no_deductible_premium', 'no_deductible_premium', 'written_premium', 'total_sum',
+                      'commercial_insu_total_sum', 'vehicle_insu_sum', 'car_damage_insu_sum',
+                      'three_liability_insu_sum', 'car_duty_insu_sum', 'vehicle_insu_sum', 'NCD_coefficient',
+                      'commercial_insu_NCD_coefficient', 'vehicle_insu_NCD_coefficient', 'accident',
+                      'accident_account', 'notCar_sign_time', 'notCar_record_time', 'notCar_start_time',
+                      'notCar_end_time', 'notCar_organization', 'notCar_channel', 'notCar_issue_tool', 'notCar_gender',
+                      'start_insure_age', 'now_age_min', 'notCar_constellation', 'notCar_province',
+                      'notCar_insurance_gender', 'start_insured_age', 'insured_now_age', 'notCar_insured_constellation',
+                      'notCar_insured_province', 'notCar_new_customer', 'current_year_customer', 'notCar_insurance',
+                      'notCar_insurance_period', 'notCar_policy_status', 'accept_insurance', 'insurance_premiums',
+                      'insurance_account', 'advance_sign_day', 'notCar_personal_group', 'notCar_agent_point',
+                      'notCar_partner_code'],
+        "dimension": [5000030, 5000032, 5000033, 5000034, 5000035, 5000036, 5000037, 5000040, 5000041, 5000042, 5000090,
+                      5000043, 5000044, 5000045, 5000046, 5000091, 5000047, 5000049, 5000179, 5000053, 5000092, 5000093,
+                      5000094, 5000056, 5000195, 5000171, 5000190, 5000208, 5000197, 5000200, 200329, 200682, 200330,
+                      200073, 200074, 200075, 200077, 200078, 200079, 200649, 200128, 200331, 200332, 200333, 200041,
+                      200137, 200335, 200336, 200337, 200338, 200346, 200623, 200624, 200625, 200626, 200358, 200359,
+                      200355, 200373, 200372, 200375, 200377, 200379, 200380, 200361, 200362, 200141, 200627, 200628,
+                      200705, 200639, 200060, 'car_personal_or_group_group', 'car_under_warranty_customer_group',
+                      'car_interval_group', 'car_organization_2_group', 'car_organization_3_group',
+                      'car_organization_4_group', 'car_channel_1_group', 'car_channel_2_group', 'car_channel_3_group',
+                      'new_channel_channel', 'blanket_insurance_group', 'business_origin_group', 'local_car_group',
+                      'car_age_group', 'purchase_price_group', 'using_properties_group', 'car_kind_group',
+                      'car_insurance_type_group', 'car_brand_group', 'car_series_group', 'special_vehicle_group',
+                      'filter_motor_tractor_group', 'self_car_group', 'new_car_group', 'sub_new_car_group',
+                      'car_gender_group', 'issue_age_min_group', 'first_insure_group', 'policyholder_birth_day_group',
+                      'id_type_group', 'marital_status_group', 'policyholder_industry_group', 'policyholder_edu_group',
+                      'policyholder_profession_group', 'car_insured_gender_group', 'issued_age_group',
+                      'car_insurance_type_group', 'car_policy_type_group', 'car_new_renew_group',
+                      'insurance_point_group', 'business_channel_group', 'accident_group', 'interval',
+                      'notCar_organization_2', 'notCar_organization_3', 'notCar_organization_4',
+                      'acquisition_way_group', 'channel_group', 'issue_tool_group', 'gender_group',
+                      'start_insure_age_group', 'now_age_group', 'constellation_group', 'province_group',
+                      'insured_gender_group', 'start_insured_age_group', 'now_insured_age_group',
+                      'insured_constellation_group', 'insured_province_group', 'notCar_new_customer_group',
+                      'current_year_customer_group', 'insurance_type_group', 'insurance_type_one_group',
+                      'insurance_type_two_group', 'insurance_type_details_group', 'policy_status_group',
+                      'accept_insurance_group', 'insurance_premiums_group', 'insurance_account_group',
+                      'advance_sign_day_group', 'notCar_personal_group_group', 'partner_group'],
+        "target": [5000058, 5000059, 5000122, 5000060, 5000061, 5000062, 5000063, 5000064, 5000065, 5000142, 5000220,
+                   5000221, 200504, 200507, 200510, 200721, 200711, 200722, 200480, 200511, 200512, 200487, 200551,
+                   'car_index_vehicle_numbers', 'car_index_policy_pieces', 'car_premium_sum',
+                   'car_additional_premium_sum', 'car_insured_amount_sum', 'car_additional_insured_amount_sum',
+                   'car_average_premium', 'car_commercial_average_premium', 'car_index_clients',
+                   'car_customer_average_premium', 'car_sign_premium_sum', 'non_car_index_customer',
+                   'non_car_index_insured_customer', 'non_car_index_fee', 'non_car_index_record_fee',
+                   'non_car_index_average_fee', 'non_car_index_insured_amount', 'non_car_index_average_insured_amount',
+                   'non_car_index_policy_pieces', 'non_car_index_average_policy_pieces', 'non_car_index_premium',
+                   'non_car_customer_average_age', 'non_car_insured_customer_average_age']}
+    for i in kind_dict.keys():
+        if tag_id in kind_dict[i]:
+            return i
+
+
+# 与上一个方法区别--字典中删去了含默认值的字段名，比如时间机构这些
+# 此方法用来判断语料是否包含有效信息（除时间机构之外的），再结合时间机构是识别到的还是给的默认值来判断语料是否为闲聊
+def get_effective_field(tag_id):
+    kind_dict = {
+        "condition": [5000069, 5000009, 5000012, 5000013, 5000014, 5000070,
+                      5000015, 5000016, 5000017, 5000018, 5000071, 5000019, 5000021, 5000176, 5000026, 5000027,
+                      5000193, 5000168, 5000189, 5000203, 5000196, 5000204, 5000199, 200182, 200022, 200677,
+                      200004, 200613, 200082, 200083, 200593, 200084, 200085,
+                      200086, 200186, 200006, 200007, 200187, 200008, 200009, 200010, 200188, 200189, 200013, 200093,
+                      200191, 200094, 200014, 200015, 200097, 200192, 200193, 200194, 200017, 200195, 200198, 200199,
+                      200200, 200204, 200594, 200209, 200502, 200503, 200225, 200224, 200227, 200228, 200229, 200231,
+                      200232, 200233, 200213, 200214, 200098, 200099, 200586, 200100, 200102, 200704, 200603, 200025,
+                      200026, 200027, 200103, 200263, 200104, 200105, 200106, 200107, 200108, 200109, 200110, 200111,
+                      200112, 200113, 200114, 200115, 200116, 200264, 200266, 200029, 200030, 200031, 200117, 200118,
+                      200119, 200120, 200277, 200278, 200279, 200033, 200034, 'car_entry_time', 'car_personal_or_group',
+                      'car_under_warranty_customer', 'car_channels', 'new_channel',
+                      'car_partner_code', 'channel_partner_code', 'channel_partner_firm_name', 'blanket_insurance',
+                      'car_agent_point', 'car_agent_person', 'business_origin', 'one_way_car_insurance',
+                      'filter_motor_tractor', 'car_insurance_type', 'self_car', 'new_car', 'sub_new_car', 'local_car',
+                      'car_age', 'purchase_price', 'using_properties', 'car_kind', 'risk_level', 'tai_risk_level',
+                      'car_type_name', 'car_barnd', 'car_series', 'car_type', 'car_type_code', 'ton',
+                      'passenger_capacity', 'years_loan', 'dump_trailer', 'special_vehicle', 'displacement',
+                      'car_weight', 'first_insure', 'car_gender', 'issue_age', 'policyholder_birth_day', 'id_type',
+                      'marital_status', 'annual_income', 'policyholder_industry', 'policyholder_edu',
+                      'policyholder_profession', 'policyholder_nation', 'car_insured_gender', 'issued_age',
+                      'car_policy_type', 'car_insurance_type', 'car_new_renew', 'insurance_time_limit',
+                      'channel_underwriting_coefficient', 'insurance_point', 'business_channel', 'total_premium',
+                      'commercial_insurance_premium', 'vehicle_insurance_premium', 'car_damage_insurance_premium',
+                      'car_damage_insurance_premium_1', 'car_damage_insu_no_deductible',
+                      'three_liability_insurance_premium', 'three_liability_insu_no_deductible',
+                      'glass_break_insu_premium', 'car_duty_insu_premium', 'car_duty_insu_no_deductible_premium',
+                      'robbery_insu_premium', 'robbery_insu_no_deductible_premium', 'scratch_insu_premium',
+                      'scratch_insu_no_deductible_premium', 'wading_insu_premium', 'self_ignite_premium',
+                      'self_ignite_no_deductible_premium', 'no_deductible_premium', 'written_premium', 'total_sum',
+                      'commercial_insu_total_sum', 'vehicle_insu_sum', 'car_damage_insu_sum',
+                      'three_liability_insu_sum', 'car_duty_insu_sum', 'vehicle_insu_sum', 'NCD_coefficient',
+                      'commercial_insu_NCD_coefficient', 'vehicle_insu_NCD_coefficient', 'accident',
+                      'accident_account', 'notCar_channel', 'notCar_issue_tool', 'notCar_gender',
+                      'start_insure_age', 'now_age_min', 'notCar_constellation', 'notCar_province',
+                      'notCar_insurance_gender', 'start_insured_age', 'insured_now_age', 'notCar_insured_constellation',
+                      'notCar_insured_province', 'notCar_new_customer', 'current_year_customer',
+                      'notCar_insurance_period', 'notCar_policy_status', 'accept_insurance', 'insurance_premiums',
+                      'insurance_account', 'advance_sign_day', 'notCar_personal_group', 'notCar_agent_point',
+                      'notCar_partner_code'],
+        "dimension": [5000030, 5000032, 5000033, 5000034, 5000035, 5000036, 5000037, 5000040, 5000041, 5000042, 5000090,
+                      5000043, 5000044, 5000045, 5000046, 5000091, 5000047, 5000049, 5000179, 5000053, 5000092, 5000093,
+                      5000094, 5000056, 5000195, 5000171, 5000190, 5000208, 5000197, 5000200, 200329, 200682, 200330,
+                      200073, 200074, 200075, 200077, 200078, 200079, 200649, 200128, 200331, 200332, 200333, 200041,
+                      200137, 200335, 200336, 200337, 200338, 200346, 200623, 200624, 200625, 200626, 200358, 200359,
+                      200355, 200373, 200372, 200375, 200377, 200379, 200380, 200361, 200362, 200141, 200627, 200628,
+                      200705, 200639, 200060, 'car_personal_or_group_group', 'car_under_warranty_customer_group',
+                      'car_interval_group', 'car_organization_2_group', 'car_organization_3_group',
+                      'car_organization_4_group', 'car_channel_1_group', 'car_channel_2_group', 'car_channel_3_group',
+                      'new_channel_channel', 'blanket_insurance_group', 'business_origin_group', 'local_car_group',
+                      'car_age_group', 'purchase_price_group', 'using_properties_group', 'car_kind_group',
+                      'car_insurance_type_group', 'car_brand_group', 'car_series_group', 'special_vehicle_group',
+                      'filter_motor_tractor_group', 'self_car_group', 'new_car_group', 'sub_new_car_group',
+                      'car_gender_group', 'issue_age_min_group', 'first_insure_group', 'policyholder_birth_day_group',
+                      'id_type_group', 'marital_status_group', 'policyholder_industry_group', 'policyholder_edu_group',
+                      'policyholder_profession_group', 'car_insured_gender_group', 'issued_age_group',
+                      'car_insurance_type_group', 'car_policy_type_group', 'car_new_renew_group',
+                      'insurance_point_group', 'business_channel_group', 'accident_group', 'interval',
+                      'notCar_organization_2', 'notCar_organization_3', 'notCar_organization_4',
+                      'acquisition_way_group', 'channel_group', 'issue_tool_group', 'gender_group',
+                      'start_insure_age_group', 'now_age_group', 'constellation_group', 'province_group',
+                      'insured_gender_group', 'start_insured_age_group', 'now_insured_age_group',
+                      'insured_constellation_group', 'insured_province_group', 'notCar_new_customer_group',
+                      'current_year_customer_group', 'insurance_type_group', 'insurance_type_one_group',
+                      'insurance_type_two_group', 'insurance_type_details_group', 'policy_status_group',
+                      'accept_insurance_group', 'insurance_premiums_group', 'insurance_account_group',
+                      'advance_sign_day_group', 'notCar_personal_group_group', 'partner_group'],
+        "target": [5000058, 5000059, 5000122, 5000060, 5000061, 5000062, 5000063, 5000064, 5000065, 5000142, 5000220,
+                   5000221, 200504, 200507, 200510, 200721, 200711, 200722, 200480, 200511, 200512, 200487, 200551,
+                   'car_index_vehicle_numbers', 'car_index_policy_pieces', 'car_premium_sum',
+                   'car_additional_premium_sum', 'car_insured_amount_sum', 'car_additional_insured_amount_sum',
+                   'car_average_premium', 'car_commercial_average_premium', 'car_index_clients',
+                   'car_customer_average_premium', 'car_sign_premium_sum', 'non_car_index_customer',
+                   'non_car_index_insured_customer', 'non_car_index_fee', 'non_car_index_record_fee',
+                   'non_car_index_average_fee', 'non_car_index_insured_amount', 'non_car_index_average_insured_amount',
+                   'non_car_index_policy_pieces', 'non_car_index_average_policy_pieces', 'non_car_index_premium',
+                   'non_car_customer_average_age', 'non_car_insured_customer_average_age']}
+    for i in kind_dict.keys():
+        if tag_id in kind_dict[i]:
+            return i
+
+
+# 判断字段中是否包含指标字段
+def get_include_target(tags):
+    """
+    :param tags: 包含键为字段名的字典
+    :return: 是否包含指标字段
+    """
+    is_include = False
+    if tags:
+        for i in tags.keys():
+            if get_field_kind(i) == "target":
+                is_include = True
+    return is_include
+
+
+# 是否包含筛选（不包括时间机构险种这一类含默认值字段）
+def get_include_condition(tags):
+    is_include = False
+    if tags:
+        for i in tags.keys():
+            if get_effective_field(i) == "condition":
+                is_include = True
+    return is_include
+
+
+# 是否包含维度
+def get_include_dimension(tags):
+    is_include = False
+    if tags:
+        for i in tags.keys():
+            if get_field_kind(i) == "dimension":
+                is_include = True
+    return is_include
 
 
 # def get_interval(query, dictionary):
@@ -610,4 +952,7 @@ def init_slot(dictionary):
     print("start init")
     for value in dictionary.values():
         add_word2jieba(value)
+    del_list = ["万到", "各省", "出豫皖", "看豫皖", "网销渠道", "客车", "比及"]
+    for i in del_list:
+        jieba.del_word(i)
     print("end init")
