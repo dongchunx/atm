@@ -1,4 +1,0 @@
-Building prefix dict from the default dictionary ...
-Loading model from cache C:\Users\dcx18\AppData\Local\Temp\jieba.cache
-Loading model cost 1.093 seconds.
-Prefix dict has been built succesfully.
